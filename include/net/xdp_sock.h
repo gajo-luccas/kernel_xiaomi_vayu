@@ -59,6 +59,10 @@ struct xdp_sock {
 	struct xsk_queue *tx ____cacheline_aligned_in_smp;
 	/* Protects multiple processes in the control path */
 	struct mutex mutex;
+	/* Mutual exclusion of NAPI TX thread and sendmsg error paths
+	 * in the SKB destructor callback.
+	 */
+	spinlock_t tx_completion_lock;
 	u64 rx_dropped;
 };
 
