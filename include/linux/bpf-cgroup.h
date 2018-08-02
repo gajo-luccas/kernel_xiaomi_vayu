@@ -19,6 +19,7 @@ extern struct static_key_false cgroup_bpf_enabled_key;
 struct bpf_prog_list {
 	struct list_head node;
 	struct bpf_prog *prog;
+	struct bpf_cgroup_storage *storage;
 };
 
 struct bpf_prog_array;
