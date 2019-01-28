@@ -155,6 +155,7 @@ struct bpf_verifier_stack_elem {
 
 #define BPF_COMPLEXITY_LIMIT_INSNS	131072
 #define BPF_COMPLEXITY_LIMIT_STACK	1024
+#define BPF_COMPLEXITY_LIMIT_STATES	64
 
 #define BPF_MAP_PTR_POISON ((void *)0xeB9F + POISON_POINTER_DELTA)
 
@@ -4874,7 +4875,7 @@ static int is_state_visited(struct bpf_verifier_env *env, int insn_idx)
 	struct bpf_verifier_state_list *new_sl;
 	struct bpf_verifier_state_list *sl;
 	struct bpf_verifier_state *cur = env->cur_state;
-	int i, j, err;
+	int i, j, err, states_cnt = 0;
 
 	sl = env->explored_states[insn_idx];
 	if (!sl)
@@ -4901,7 +4902,11 @@ static int is_state_visited(struct bpf_verifier_env *env, int insn_idx)
 			return 1;
 		}
 		sl = sl->next;
+		states_cnt++;
 	}
+
+	if (!env->allow_ptr_leaks && states_cnt > BPF_COMPLEXITY_LIMIT_STATES)
+		return 0;
 
 	/* there were no equivalent states, remember current one.
 	 * technically the current state is not proven to be safe yet,
