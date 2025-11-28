@@ -591,8 +591,8 @@ void blk_queue_bypass_start(struct request_queue *q)
 	spin_unlock_irq(q->queue_lock);
 
 	/*
-	 * Queues start drained.  Skip actual draining till init is
-	 * complete.  This avoids lenghty delays during queue init which
+	 * Queues start drained. Skip actual draining till init is
+	 * complete. This avoids lengthy delays during queue init which
 	 * can happen many times during boot.
 	 */
 	if (blk_queue_init_done(q)) {
@@ -785,7 +785,7 @@ static void *alloc_request_size(gfp_t gfp_mask, void *data)
 
 	rq = kmalloc_node(sizeof(struct request) + q->cmd_size, gfp_mask,
 			q->node);
-	if (rq && q->init_rq_fn && q->init_rq_fn(q, rq, gfp_mask) < 0) {
+	if (rq && unlikely(q->init_rq_fn && q->init_rq_fn(q, rq, gfp_mask) < 0)) {
 		kfree(rq);
 		rq = NULL;
 	}
