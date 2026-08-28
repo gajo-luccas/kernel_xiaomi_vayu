@@ -1345,10 +1345,6 @@ ifdef lto-flags
 endif
 # Make sure compiler does not have buggy stack-protector support.
 ifdef stackp-check
-...
-endif
-# Make sure compiler does not have buggy stack-protector support.
-ifdef stackp-check
   ifneq ($(shell $(CONFIG_SHELL) $(stackp-check) $(CC) $(KBUILD_CPPFLAGS) $(biarch)),y)
 	@echo Cannot use CONFIG_CC_STACKPROTECTOR_$(stackp-name): \
                   $(stackp-flag) available but compiler is broken >&2 && exit 1
