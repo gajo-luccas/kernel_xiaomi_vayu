@@ -1343,12 +1343,9 @@ ifdef lto-flags
 		>&2 && exit 1
   endif
 endif
-# Make sure compiler supports requested stack protector flag.
-ifdef stackp-name
-  ifeq ($(call cc-option, $(stackp-flag)),)
-	@echo Cannot use CONFIG_CC_STACKPROTECTOR_$(stackp-name): \
-		  $(stackp-flag) not supported by compiler >&2 && exit 1
-  endif
+# Make sure compiler does not have buggy stack-protector support.
+ifdef stackp-check
+...
 endif
 # Make sure compiler does not have buggy stack-protector support.
 ifdef stackp-check
