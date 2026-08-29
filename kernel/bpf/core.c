@@ -781,7 +781,7 @@ struct bpf_prog *bpf_jit_blind_constants(struct bpf_prog *prog)
 	struct bpf_insn *insn;
 	int i, rewritten;
 
-	if (!bpf_jit_blinding_enabled())
+	if (!bpf_jit_blinding_enabled(prog))
 		return prog;
 
 	clone = bpf_prog_clone_create(prog, GFP_USER);
