@@ -97,20 +97,6 @@ static inline void emit_a64_mov_i64(const int reg, const u64 val,
 	}
 }
 
-static inline void emit_addr_mov_i64(const int reg, const u64 val,
-				     struct jit_ctx *ctx)
-{
-	u64 tmp = val;
-	int shift = 0;
-
-	emit(A64_MOVZ(1, reg, tmp & 0xffff, shift), ctx);
-	for (;shift < 48;) {
-		tmp >>= 16;
-		shift += 16;
-		emit(A64_MOVK(1, reg, tmp & 0xffff, shift), ctx);
-	}
-}
-
 static inline void emit_a64_mov_i(const int is64, const int reg,
 				  const s32 val, struct jit_ctx *ctx)
 {
@@ -618,10 +604,7 @@ emit_cond_jmp:
 		const u8 r0 = bpf2a64[BPF_REG_0];
 		const u64 func = (u64)__bpf_call_base + imm;
 
-		if (ctx->prog->is_func)
-			emit_addr_mov_i64(tmp, func, ctx);
-		else
-			emit_a64_mov_i64(tmp, func, ctx);
+		emit_a64_mov_i64(tmp, func, ctx);
 		emit(A64_BLR(tmp), ctx);
 		emit(A64_MOV(1, r0, A64_R(0)), ctx);
 		break;
@@ -862,24 +845,16 @@ static inline void bpf_flush_icache(void *start, void *end)
 	flush_icache_range((unsigned long)start, (unsigned long)end);
 }
 
-struct arm64_jit_data {
-	struct bpf_binary_header *header;
-	u8 *image;
-	struct jit_ctx ctx;
-};
-
 struct bpf_prog *bpf_int_jit_compile(struct bpf_prog *prog)
 {
 	struct bpf_prog *tmp, *orig_prog = prog;
 	struct bpf_binary_header *header;
-	struct arm64_jit_data *jit_data;
 	bool tmp_blinded = false;
-	bool extra_pass = false;
 	struct jit_ctx ctx;
 	int image_size;
 	u8 *image_ptr;
 
-	if (!prog->jit_requested)
+	if (!bpf_jit_enable)
 		return orig_prog;
 
 	tmp = bpf_jit_blind_constants(prog);
@@ -893,30 +868,13 @@ struct bpf_prog *bpf_int_jit_compile(struct bpf_prog *prog)
 		prog = tmp;
 	}
 
-	jit_data = prog->aux->jit_data;
-	if (!jit_data) {
-		jit_data = kzalloc(sizeof(*jit_data), GFP_KERNEL);
-		if (!jit_data) {
-			prog = orig_prog;
-			goto out;
-		}
-		prog->aux->jit_data = jit_data;
-	}
-	if (jit_data->ctx.offset) {
-		ctx = jit_data->ctx;
-		image_ptr = jit_data->image;
-		header = jit_data->header;
-		extra_pass = true;
-		image_size = sizeof(u32) * ctx.idx;
-		goto skip_init_ctx;
-	}
 	memset(&ctx, 0, sizeof(ctx));
 	ctx.prog = prog;
 
 	ctx.offset = kcalloc(prog->len, sizeof(int), GFP_KERNEL);
 	if (ctx.offset == NULL) {
 		prog = orig_prog;
-		goto out_off;
+		goto out;
 	}
 
 	/* 1. Initial fake pass to compute ctx->idx. */
@@ -947,7 +905,6 @@ struct bpf_prog *bpf_int_jit_compile(struct bpf_prog *prog)
 	/* 2. Now, the actual pass. */
 
 	ctx.image = (__le32 *)image_ptr;
-skip_init_ctx:
 	ctx.idx = 0;
 
 	build_prologue(&ctx);
@@ -973,31 +930,13 @@ skip_init_ctx:
 
 	bpf_flush_icache(header, ctx.image + ctx.idx);
 
-	if (!prog->is_func || extra_pass) {
-		if (extra_pass && ctx.idx != jit_data->ctx.idx) {
-			pr_err_once("multi-func JIT bug %d != %d\n",
-				    ctx.idx, jit_data->ctx.idx);
-			bpf_jit_binary_free(header);
-			prog->bpf_func = NULL;
-			prog->jited = 0;
-			goto out_off;
-		}
-		bpf_jit_binary_lock_ro(header);
-	} else {
-		jit_data->ctx = ctx;
-		jit_data->image = image_ptr;
-		jit_data->header = header;
-	}
+	bpf_jit_binary_lock_ro(header);
 	prog->bpf_func = (void *)ctx.image;
 	prog->jited = 1;
 	prog->jited_len = image_size;
 
-	if (!prog->is_func || extra_pass) {
 out_off:
-		kfree(ctx.offset);
-		kfree(jit_data);
-		prog->aux->jit_data = NULL;
-	}
+	kfree(ctx.offset);
 out:
 	if (tmp_blinded)
 		bpf_jit_prog_release_other(prog, prog == orig_prog ?
@@ -1005,26 +944,24 @@ out:
 	return prog;
 }
 
-void *bpf_jit_alloc_exec(unsigned long size)
-{
-	return __vmalloc_node_range(size, PAGE_SIZE, BPF_JIT_REGION_START,
-				    BPF_JIT_REGION_END, GFP_KERNEL,
-				    PAGE_KERNEL_EXEC, 0, NUMA_NO_NODE,
-				    __builtin_return_address(0));
-}
-
-void bpf_jit_free_exec(void *addr)
-{
-	return vfree(addr);
-}
-
 #ifdef CONFIG_CFI_CLANG
 bool arch_bpf_jit_check_func(const struct bpf_prog *prog)
 {
 	const uintptr_t func = (const uintptr_t)prog->bpf_func;
 
-	/* bpf_func must be correctly aligned and within the BPF JIT region */
-	return (func >= BPF_JIT_REGION_START && func < BPF_JIT_REGION_END &&
-		IS_ALIGNED(func, sizeof(u32)));
+	/*
+	 * bpf_func must be correctly aligned and within the correct region.
+	 * module_alloc places JIT code in the module region, unless
+	 * ARM64_MODULE_PLTS is enabled, in which case we might end up using
+	 * the vmalloc region too.
+	 */
+	if (unlikely(!IS_ALIGNED(func, sizeof(u32))))
+		return false;
+
+	if (IS_ENABLED(CONFIG_ARM64_MODULE_PLTS) &&
+			is_vmalloc_addr(prog->bpf_func))
+		return true;
+
+	return (func >= MODULES_VADDR && func < MODULES_END);
 }
 #endif
