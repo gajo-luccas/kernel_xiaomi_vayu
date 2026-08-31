@@ -3429,7 +3429,7 @@ static int adjust_reg_min_max_vals(struct bpf_verifier_env *env,
 			/* pointer += scalar */
 			return adjust_ptr_min_max_vals(env, insn,
 						       dst_reg, src_reg);
-			
+		}
 	} else {
 		/* Pretend the src is a reg with a known value, since we only
 		 * need to be able to read from this state.
