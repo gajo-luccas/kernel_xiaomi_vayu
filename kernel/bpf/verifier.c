@@ -19,6 +19,7 @@
 #include <net/netlink.h>
 #include <linux/file.h>
 #include <linux/vmalloc.h>
+#include <linux/sched/signal.h>
 #include <linux/stringify.h>
 #include <linux/bsearch.h>
 #include <linux/sort.h>
