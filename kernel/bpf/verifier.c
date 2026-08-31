@@ -5906,23 +5906,23 @@ static int convert_ctx_accesses(struct bpf_verifier_env *env)
 			continue;
 		}
 
-		if (type == BPF_WRITE &&
-		    env->insn_aux_data[i + delta].sanitize_stack_spill) {
-			struct bpf_insn patch[] = {
-				*insn,
-				BPF_ST_NOSPEC(),
-			};
+		
+		 
+		
+			
+			
+		
 
-			cnt = ARRAY_SIZE(patch);
-			new_prog = bpf_patch_insn_data(env, i + delta, patch, cnt);
-			if (!new_prog)
-				return -ENOMEM;
+			
+			
+		
+				
 
-			delta    += cnt - 1;
-			env->prog = new_prog;
-			insn      = new_prog->insnsi + i + delta;
-			continue;
-		}
+			
+			
+			
+			
+		
 
 		if (!ctx_access)
 			continue;
